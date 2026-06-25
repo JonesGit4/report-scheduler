@@ -29,7 +29,7 @@ from cryptography.hazmat.primitives.asymmetric import padding
 # ══════════════════════════════════════════════════════════
 # CONFIG
 # ══════════════════════════════════════════════════════════
-LOG_FILE = Path("/opt/report-scheduler/scheduler.log")
+LOG_FILE = Path("/data/scheduler.log")
 LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
 
 # NocoDB
@@ -43,7 +43,7 @@ TELEGRAM_CHAT_ID = "-1004297981334"  # Alertas Clientes
 
 # Google Service Account
 SA_EMAIL = "gmail-n8n@youtube-435621.iam.gserviceaccount.com"
-SA_KEY_PATH = "/opt/report-scheduler/sa-key.pem"
+SA_KEY_PATH = "/run/secrets/sa_key"
 
 # Meta (Facebook) Access Token
 META_TOKEN = "EAARlkr1FSPkBRTqjZCA18mBODNvxcvbZAZCPzMjjJ8fwdy8ZCLspSWJpHwceW2lLjfZCo4GbSMDtDbI49qOWYeo24KYfBAIqjRQKAKSqM11x7M3fC9MmtumXlTzjj3ZADGdhKNuZCAP3rd9WNfZAnmPlhDOCNKqZBYD6TGpyJ2q7p9w1RdZArWBsAvONK1tZCQYZBi4izAZDZD"
@@ -456,7 +456,7 @@ def telegram_send(chat_id, text, topic_id=None):
 # ══════════════════════════════════════════════════════════
 # MAIN
 # ══════════════════════════════════════════════════════════
-def main():
+def main(dedup_prefix=""):
     t0 = datetime.now()
     log.info("=" * 60)
     log.info(f"🚀 Report Scheduler v3 — {t0.strftime('%Y-%m-%d %H:%M:%S')}")
@@ -493,7 +493,7 @@ def main():
         log.info(f"\n🏢 {ccfg['name']}")
 
         for rtype in due:
-            dkey = f"{ckey}-{rtype}"
+            dkey = f"{dedup_prefix}{ckey}-{rtype}"
             if dedup_check(dedup, dkey):
                 log.info(f"  ⏭️  {dkey} — já rodou")
                 results.append((ckey, rtype, "skipped"))
@@ -606,4 +606,8 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    import argparse
+    p = argparse.ArgumentParser()
+    p.add_argument("--dedup-prefix", default="", help="Prefix for dedup keys (e.g. 'bbc-')")
+    args = p.parse_args()
+    sys.exit(main(dedup_prefix=args.dedup_prefix))
