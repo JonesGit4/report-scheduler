@@ -33,12 +33,12 @@ LOG_FILE = Path("/opt/report-scheduler/scheduler.log")
 LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
 
 # NocoDB
-NOCO_TOKEN = "NOCODB_API_TOKEN"
+NOCO_TOKEN = "nc_pat_1aOj3QbDFESJWURvzf83z8vRBfALrPWOOWxuafUP"
 NOCO_BASE_ID = "pehi4ooc5aoweo5"
 NOCO_TABLE_ID = "mlnq9hkm7gzh4r1"
 
 # Telegram
-TELEGRAM_BOT_TOKEN = "TELEGRAM_BOT_TOKEN"
+TELEGRAM_BOT_TOKEN = "8405091435:AAHKtKFsJvjSVRA8-s4L74VCYG99b-vbu4Y"
 TELEGRAM_CHAT_ID = "-1004297981334"  # Alertas Clientes
 
 # Google Service Account
@@ -46,7 +46,7 @@ SA_EMAIL = "gmail-n8n@youtube-435621.iam.gserviceaccount.com"
 SA_KEY_PATH = "/opt/report-scheduler/sa-key.pem"
 
 # Meta (Facebook) Access Token
-META_TOKEN = "META_ACCESS_TOKEN"
+META_TOKEN = "EAARlkr1FSPkBRTqjZCA18mBODNvxcvbZAZCPzMjjJ8fwdy8ZCLspSWJpHwceW2lLjfZCo4GbSMDtDbI49qOWYeo24KYfBAIqjRQKAKSqM11x7M3fC9MmtumXlTzjj3ZADGdhKNuZCAP3rd9WNfZAnmPlhDOCNKqZBYD6TGpyJ2q7p9w1RdZArWBsAvONK1tZCQYZBi4izAZDZD"
 
 # Clients
 CLIENTS = {
@@ -297,6 +297,11 @@ def safe_pct(val):
     try: return f"{float(val)*100:.1f}%"
     except: return "—"
 
+def safe_pct_meta(val):
+    """Meta API returns CTR already as percentage (e.g. 2.517 = 2.517%), no multiply needed"""
+    try: return f"{float(val):.2f}%"
+    except: return "—"
+
 def safe_money(val):
     try: return f"R$ {float(val):,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
     except: return "—"
@@ -330,14 +335,34 @@ def format_report(client, report_type, date_display, data):
         r += f"├ Investimento: {safe_money(ma.get('spend'))}\n"
         r += f"├ Impressões: {safe_num(ma.get('impressions'))}\n"
         r += f"├ Alcance: {safe_num(ma.get('reach'))}\n"
-        r += f"├ Cliques: {safe_num(ma.get('clicks'))} (CTR {safe_pct(ma.get('ctr'))})\n"
+        r += f"├ Cliques: {safe_num(ma.get('clicks'))} (CTR {safe_pct_meta(ma.get('ctr'))})\n"
         r += f"├ CPC: {safe_money(ma.get('cpc'))} | CPM: {safe_money(ma.get('cpm'))}\n"
-        for a in ma.get("actions", []):
-            at = a.get("action_type", "")
-            if at == "lead": r += f"├ Leads: {safe_num(a.get('value'))}\n"
-            if "messaging_conversation_started" in at: r += f"├ Conversas: {safe_num(a.get('value'))}\n"
-        for c in ma.get("cost_per_action_type", []):
-            if c.get("action_type") == "lead": r += f"├ CPA Lead: {safe_money(c.get('value'))}\n"
+        # Build lookup maps for actions and costs
+        actions_map = {}
+        for a in ma.get("actions", []) or []:
+            actions_map[a.get("action_type","")] = a.get("value","0")
+        cost_map = {}
+        for c in ma.get("cost_per_action_type", []) or []:
+            cost_map[c.get("action_type","")] = c.get("value","0")
+        
+        # Primary: messaging conversations (WhatsApp campaign)
+        conv_key = None
+        for k in actions_map:
+            if "messaging_conversation_started" in k:
+                conv_key = k
+                break
+        if conv_key:
+            r += f"├ Conversas: {safe_num(actions_map.get(conv_key))}\n"
+            cpa_conv = cost_map.get(conv_key)
+            if cpa_conv:
+                r += f"├ CPA Conversa: {safe_money(cpa_conv)}\n"
+        # Secondary: leads (form) — only show if present AND different from conversas
+        lead_val = actions_map.get("lead", "0")
+        if lead_val and lead_val != "0" and str(lead_val) != str(actions_map.get(conv_key or "", "")):
+            r += f"├ Leads (form): {safe_num(lead_val)}\n"
+            cpa_lead = cost_map.get("lead")
+            if cpa_lead:
+                r += f"├ CPA Lead: {safe_money(cpa_lead)}\n"
         r += "└─\n\n"
     else:
         r += "└ ⚠️ Sem dados\n\n"
